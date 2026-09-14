@@ -757,12 +757,13 @@ impl AudioPipeline {
         // Measured on a real recording, 47% of segment boundaries sat in the
         // 0.42-0.75s range that a longer redemption bridges.
         //
-        // 500ms is the live-path policy (see the constant's doc comment). The
-        // batch value (2000ms, `import.rs`/`retranscription.rs`) was tried here
-        // first, but under continuous system audio it kept a VAD segment open
-        // indefinitely and withheld live transcript emission, so live and batch
-        // deliberately diverge. Bounded live segments under continuous speech
-        // are tracked in #756.
+        // This fork raises the live path to the batch value (2000ms, see the
+        // constant's doc comment), because 500ms is still shorter than an ordinary
+        // pause inside a sentence. Upstream keeps 500ms to hold live transcripts
+        // prompt and warns that 2000ms lets a segment run on under continuous
+        // speech; that is real and has been measured here at 244s in one meeting,
+        // so a segment bounded by length regardless of pauses is still needed
+        // (upstream #756).
         let vad_processor =
             ContinuousVadProcessor::new(sample_rate, VAD_REDEMPTION_TIME_MS)?;
         info!(
