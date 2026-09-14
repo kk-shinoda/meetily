@@ -21,7 +21,17 @@ fn main() {
     ffmpeg::ensure_ffmpeg_binary();
     onnxruntime::ensure_onnxruntime_runtime();
 
-    tauri_build::build()
+    // fork: declare the inlined `meeting-detector` plugin so its commands get
+    // ACL permissions (allowed via "meeting-detector:default" in tauri.conf.json).
+    tauri_build::try_build(
+        tauri_build::Attributes::new().plugin(
+            "meeting-detector",
+            tauri_build::InlinedPlugin::new()
+                .commands(&["get_settings", "set_settings", "get_status", "probe_signals"])
+                .default_permission(tauri_build::DefaultPermissionRule::AllowAllCommands),
+        ),
+    )
+    .expect("failed to run tauri-build");
 }
 
 /// Detects GPU acceleration capabilities and provides build guidance
