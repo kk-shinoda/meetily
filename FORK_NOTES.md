@@ -62,6 +62,18 @@ Safety rules the detector follows:
   call resumes ownership and still auto-stops.
 - A failed auto-start is not retried; the meeting stays confirmed but unowned, and the error is shown in the tab.
 
+## Updater
+
+The updater endpoint points at this fork's releases, so a fork build is never replaced by an upstream release.
+Signed update artifacts are **not** produced (`bundle.createUpdaterArtifacts: false`): the public key in
+`tauri.conf.json` is upstream's, the matching private key is not available here, and the build fails at the signing
+step while producing an otherwise complete `.app` and `.dmg`. With no releases published in this repository the
+update check simply fails and is logged; the startup check swallows the error and the tray item reports no update.
+
+To turn updates back on: generate a key pair (`pnpm exec tauri signer generate -w ~/.tauri/meetily-fork.key`),
+replace `plugins.updater.pubkey`, set `createUpdaterArtifacts` back to true, and publish releases carrying
+`latest.json` with `TAURI_SIGNING_PRIVATE_KEY` set during the build.
+
 ## Known limits
 
 - Microphone-based detection is macOS only (Core Audio process properties). Other platforms only get Zoom via `CptHost`.
