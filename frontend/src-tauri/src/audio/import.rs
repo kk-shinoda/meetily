@@ -58,6 +58,10 @@ impl Drop for ImportGuard {
 /// natural sentence/topic pause (500ms-2s)
 const VAD_REDEMPTION_TIME_MS: u32 = 2000;
 
+/// Exposed so the live path can assert it kept the same pause policy.
+#[cfg(test)]
+pub(crate) const VAD_REDEMPTION_TIME_MS_FOR_TESTS: u32 = VAD_REDEMPTION_TIME_MS;
+
 /// Maximum file size: 20GB (prevents OOM and excessive processing time)
 const MAX_FILE_SIZE_BYTES: u64 = 20 * 1024 * 1024 * 1024; // 20GB
 

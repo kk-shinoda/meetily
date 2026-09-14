@@ -18,6 +18,18 @@ Everything fork-specific lives in new files; upstream files are touched in as fe
 | `frontend/tests/lib/meeting-detection-service.test.ts` | Command names, event name, label table (bun test) |
 | `frontend/tests/components/meeting-detection-settings.test.tsx` | Settings tab behaviour (bun test) |
 
+## Transcription accuracy
+
+Upstream splits live audio on a 500 ms pause, which is shorter than an ordinary pause inside a sentence: a real
+meeting came out as 193 segments with a median length of 1.8 s, 23% of them five characters or shorter, and 9%
+transcribed into a language nobody spoke. This fork runs the live path at the same 2000 ms pause the batch paths
+use (`pipeline.rs`, `VAD_REDEMPTION_TIME_MS`), trading on-screen latency for segments long enough to transcribe.
+Bounding a segment by length regardless of pauses is the real fix, tracked upstream in #756.
+
+Two settings matter as much as the code and live outside the repo. The transcription language must be pinned
+(Settings → Transcription); on `auto`, Whisper re-detects per segment and short segments come back as Spanish or
+Korean. The model should be `large-v3` rather than `large-v3-turbo-q5_0` when accuracy matters more than speed.
+
 ## Upstream files touched (check these on every upstream merge)
 
 | File | Change |
@@ -26,6 +38,8 @@ Everything fork-specific lives in new files; upstream files are touched in as fe
 | `frontend/src-tauri/build.rs` | `tauri_build::build()` → `try_build(...)` declaring the inlined plugin commands for the ACL |
 | `frontend/src-tauri/tauri.conf.json` | `"meeting-detector:default"` permission; updater endpoint points at this fork's releases |
 | `frontend/src/app/settings/page.tsx` | Import, one `TABS` entry, one `TabsContent` block |
+| `frontend/src-tauri/src/audio/pipeline.rs` | `VAD_REDEMPTION_TIME_MS` 500 → 2000 with its comment and test |
+| `frontend/src-tauri/src/audio/import.rs` | Test-only re-export of the same constant |
 
 If upstream changes the recording entry points, re-check these call sites in `detector.rs`:
 `audio::recording_commands::{is_recording, start_recording_with_meeting_name, stop_recording, RecordingArgs}`,
