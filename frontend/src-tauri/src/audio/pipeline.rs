@@ -16,15 +16,23 @@ use super::vad::{ContinuousVadProcessor};
 /// How long a silence must last before the VAD closes a speech segment, and
 /// therefore how long the audio clips handed to the ASR engine are.
 ///
-/// Live-path policy: 500ms (matches the established Meetily Pro live policy).
-/// The batch paths (`import.rs` / `retranscription.rs`) use 2000ms instead —
-/// they have no latency requirement, so they optimize purely for ASR request
-/// length. The live path cannot: with continuous audio (e.g. a podcast played
-/// as system audio) a 2000ms redemption keeps one VAD segment open
-/// indefinitely, withholds live transcript emission, and overruns the
-/// accumulated-speech-buffer warning threshold. Bounded live segmentation
-/// during continuous speech is tracked separately in #756.
-const VAD_REDEMPTION_TIME_MS: u32 = 500;
+/// Fork policy: 2000ms, the same value the batch paths (`import.rs` /
+/// `retranscription.rs`) use. Upstream runs the live path at 500ms to keep
+/// on-screen transcripts prompt, but a 500ms pause is shorter than an ordinary
+/// pause inside a sentence, so speech is cut into ~2s pieces. Whisper reads
+/// context, and on pieces that short it both loses accuracy and misdetects the
+/// language, which is why the batch paths bridge longer pauses. This fork
+/// records meetings and values the transcript over its latency, so it takes the
+/// batch policy.
+///
+/// What this costs: a segment is only emitted after a 2s pause, so a speaker who
+/// never pauses that long (a presentation, or continuous audio such as a podcast
+/// played through system audio) holds one segment open, delaying its appearance
+/// on screen and growing the accumulated-speech buffer, which warns past ~62s.
+/// The recording itself is unaffected and the end-of-recording flush always
+/// emits the remainder. Bounding a segment by length regardless of pauses is the
+/// real fix and is tracked upstream in #756.
+const VAD_REDEMPTION_TIME_MS: u32 = 2000;
 
 /// Ring buffer for synchronized audio mixing
 /// Accumulates samples from mic and system streams until we have aligned windows
@@ -749,12 +757,13 @@ impl AudioPipeline {
         // Measured on a real recording, 47% of segment boundaries sat in the
         // 0.42-0.75s range that a longer redemption bridges.
         //
-        // 500ms is the live-path policy (see the constant's doc comment). The
-        // batch value (2000ms, `import.rs`/`retranscription.rs`) was tried here
-        // first, but under continuous system audio it kept a VAD segment open
-        // indefinitely and withheld live transcript emission, so live and batch
-        // deliberately diverge. Bounded live segments under continuous speech
-        // are tracked in #756.
+        // This fork raises the live path to the batch value (2000ms, see the
+        // constant's doc comment), because 500ms is still shorter than an ordinary
+        // pause inside a sentence. Upstream keeps 500ms to hold live transcripts
+        // prompt and warns that 2000ms lets a segment run on under continuous
+        // speech; that is real and has been measured here at 244s in one meeting,
+        // so a segment bounded by length regardless of pauses is still needed
+        // (upstream #756).
         let vad_processor =
             ContinuousVadProcessor::new(sample_rate, VAD_REDEMPTION_TIME_MS)?;
         info!(
@@ -1107,10 +1116,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_live_vad_redemption_matches_pro_policy() {
-        // Live uses the established 500ms pause policy; it does not bound
-        // uninterrupted speech. Batch import/retranscription use 2000ms.
-        // See #679 and #756.
-        assert_eq!(VAD_REDEMPTION_TIME_MS, 500);
+    fn test_live_vad_redemption_matches_batch_policy() {
+        // Fork divergence: the live path bridges the same 2000ms pause as
+        // import/retranscription, trading transcript latency for segments long
+        // enough to transcribe accurately. See the constant's comment, #679 and
+        // #756.
+        assert_eq!(VAD_REDEMPTION_TIME_MS, 2000);
+        assert_eq!(VAD_REDEMPTION_TIME_MS, crate::audio::import::VAD_REDEMPTION_TIME_MS_FOR_TESTS);
     }
 }
